@@ -1,5 +1,10 @@
 import requests
 import pandas as pd
+import numpy as np
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import xgboost as xgb
+from sklearn.model_selection import GridSearchCV
+import shap
 #%%
 url_commodities = "https://estadisticas.bcrp.gob.pe/estadisticas/series/api/PD04702XD-PD04704XD-PD04703XD-PD04701XD-PD04705XD/json/2000-01-03/2024-04-20"
 
@@ -70,3 +75,69 @@ forecast_copper = pd.merge(tc_tint, ipc_peru, on='Fecha', how='inner') \
 
 forecast_copper = forecast_copper.iloc[:,[0,1,2,3,5,6,7,8,9,10,11]]
 forecast_copper.rename(columns={'IPC_x': 'IPC'}, inplace=True)
+
+#%%
+
+forecast_copper.iloc[:, 1:] = forecast_copper.iloc[:, 1:].apply(lambda x: pd.to_numeric(x, errors='coerce'))
+#%%
+
+forecast_copper['Cobre'].shift(-1)
+day_copper = pd.DataFrame(forecast_copper)
+day_copper['Cobre Dia'] = day_copper['Cobre'].shift(-1)
+day_copper = day_copper.dropna()
+#%%
+
+day_copper.set_index('Fecha', inplace=True)
+day_copper = day_copper.apply(lambda x: pd.to_numeric(x, errors='coerce'))
+
+
+#%%
+
+# Dividir los datos en conjuntos de entrenamiento y prueba
+n_train = round(len(day_copper) * 0.8)
+train = day_copper.iloc[:int(n_train)]
+test = day_copper.iloc[int(n_train):]
+X_train = train.drop(columns=['Cobre Dia'])
+y_train = train['Cobre Dia']
+X_test = test.drop(columns=['Cobre Dia'])
+y_test = test['Cobre Dia']
+
+# Define los hiperparámetros que deseas optimizar
+param_grid = {
+    'max_depth': [3, 6, 9,12],
+    'learning_rate': [0.01, 0.1, 0.2,0.3,0.4],
+    'subsample': [0.4, 0.6, 0.8, 1],
+    'gamma': [ 0, 0.1, 0.2,0.4]
+
+}
+
+# Crea un objeto GridSearchCV
+grid_search = GridSearchCV(estimator=xgb.XGBRegressor(objective='reg:squarederror'),
+                           param_grid=param_grid,
+                           scoring='neg_mean_squared_error',
+                           cv=3,
+                           n_jobs=-1)
+
+grid_search.fit(X_train, y_train)
+
+best_params = grid_search.best_params_
+
+#%%
+# Modelo XGBoost
+
+dtrain = xgb.DMatrix(X_train, label=y_train)
+dtest = xgb.DMatrix(X_test, label=y_test)
+params = {'objective': 'reg:squarederror', 'max_depth': 12, 'learning_rate': 0.4, 'gamma': 0.2, 'subsample': 0.4}
+model_xgb = xgb.train(params, dtrain)
+predictions_xgb = model_xgb.predict(dtest)
+mse_xgb = mean_squared_error(y_test, predictions_xgb)
+rmse_xgb = np.sqrt(mse_xgb)
+mae_xgb = mean_absolute_error(y_test, predictions_xgb)
+model_xgb.save_model("xgb_cobre.json")
+#%%
+
+explainer = shap.Explainer(model_xgb)
+shap_values = explainer(X_test)
+shap.summary_plot(shap_values, X_test, plot_type="bar")
+
+
