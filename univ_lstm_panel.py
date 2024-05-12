@@ -2,8 +2,6 @@ import pandas as pd
 import numpy as np
 import requests
 import datetime
-import panel as pn
-import plotly.graph_objects as go
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential
 from keras.layers import Dense, LSTM
@@ -104,52 +102,49 @@ x_prediccion = np.reshape(x_prediccion, (1, x_prediccion.shape[0], 1))
 cobre_tmrr = scaler.inverse_transform(model.predict(x_prediccion))
 
 #%%
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objs as go
+from datetime import datetime
 
+# Supongamos que tienes tu DataFrame df_cob con las fechas como índice y los precios como valores
+# También supondremos que cobre_tmrr es un objeto numpy.ndarray con el precio estimado del cobre para mañana
 
-#%%
-import plotly.express as px
-from shared import app_dir, tips
-from shiny import reactive, render
-from shiny.express import input, ui
-from shinywidgets import render_plotly
-import faicons as fa
+# Ejemplo de DataFrame de precios de cobre
+fechas = pd.date_range(start='2024-01-01', end='2024-05-11')
+precios = np.random.rand(len(fechas)) * 100  # Generar precios aleatorios para el ejemplo
+df_cob = pd.DataFrame({'Precio': precios}, index=fechas)
 
-bill_rng = (min(tips.total_bill), max(tips.total_bill))
+# Precio estimado del cobre para mañana
+cobre_tmrr = np.array([[448.80356]])
 
-# Add page title and sidebar
-ui.page_opts(title="Predicción del precio del cobre", fillable=True)
+# Configurar la página Streamlit
+st.title('Precio del Cobre')
 
-ICONS = {
-    "user": fa.icon_svg("user", "regular"),
-    "wallet": fa.icon_svg("wallet"),
-    "currency-dollar": fa.icon_svg("dollar-sign"),
-    "ellipsis": fa.icon_svg("ellipsis"),
-}
+# Gráfico de línea con precios de cobre a lo largo del tiempo
+st.plotly_chart(
+    go.Figure(
+        data=[
+            go.Scatter(
+                x=df_cob.index,
+                y=df_cob['Precio'],
+                mode='lines',
+                marker=dict(color='blue'),
+                name='Precio de Cobre'
+            )
+        ],
+        layout=go.Layout(
+            title='Precio del Cobre a lo largo del tiempo',
+            xaxis={'title': 'Fecha'},
+            yaxis={'title': 'Precio (centavos de dólar por libra)'}
+        )
+    )
+)
 
-with ui.layout_columns(fill=False):
-    with ui.value_box(showcase=ICONS["user"]):
-        "Total tippers"
+# Value box con el precio estimado del cobre para mañana
+st.subheader("Precio estimado del cobre para mañana")
+st.write(f"${cobre_tmrr[0][0]:.2f} centavos de dólar por libra")
 
-        @render.express
-        def total_tippers():
-            tips_data().shape[0]
-
-    with ui.value_box(showcase=ICONS["wallet"]):
-        "Average tip"
-
-        @render.express
-        def average_tip():
-            d = tips_data()
-            if d.shape[0] > 0:
-                perc = d.tip / d.total_bill
-                f"{perc.mean():.1%}"
-
-    with ui.value_box(showcase=ICONS["currency-dollar"]):
-        "Average bill"
-
-        @render.express
-        def average_bill():
-            d = tips_data()
-            if d.shape[0] > 0:
-                bill = d.total_bill.mean()
-                f"${bill:.2f}"
+# Fecha de actualización
+st.subheader(f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
